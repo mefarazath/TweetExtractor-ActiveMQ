@@ -2,11 +2,15 @@ package org.wso2.cep.uima.demo;
 
 import org.apache.activemq.ActiveMQConnectionFactory;
 import org.apache.log4j.PropertyConfigurator;
-import org.wso2.cep.uima.demo.data.Tweet;
+import org.wso2.cep.uima.demo.Util.Tweet;
+import org.wso2.cep.uima.demo.Util.TwitterConfiguration;
+import org.wso2.cep.uima.demo.Util.TwitterConfigurationBuiler;
+import org.xml.sax.SAXException;
 import twitter4j.*;
 import twitter4j.conf.ConfigurationBuilder;
 
 import javax.jms.*;
+import javax.xml.parsers.ParserConfigurationException;
 import java.io.BufferedWriter;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -18,13 +22,6 @@ import java.util.List;
  */
 public class TweetExtractor {
 
-    // Twitter API keys
-    private final String consumerKey = "IxEX6LoI3Hcp91JX6KHEVECKu";
-    private final String consumerSecret = "vr4RRmrT7UvKQO703Z3K9U5MsFzc7G8N7M8IBLzWQn3BrCQGIE";
-    private final String accessToken = "711930980-dThMw79BL0i33dOpfCZBqDYH8FWIeQYXdkKOsvfa";
-    private final String accessTokenSecret = "kgVIchdQrkjKPZoReBMECSLoyPegEHm2Y8mi8BLqDQEtP";
-
-
     private ConfigurationBuilder cb;
     private Twitter twitterApp;
 
@@ -35,7 +32,8 @@ public class TweetExtractor {
     private String queueName;
 
 
-    public TweetExtractor(String JMSUrl, String queueName,String user_to_follow){
+    public TweetExtractor(String JMSUrl, String queueName,String user_to_follow) throws ParserConfigurationException, SAXException, IOException {
+
         this.JMSUrl = JMSUrl;
         this.queueName = queueName;
         this.user_to_follow = user_to_follow;
@@ -46,14 +44,16 @@ public class TweetExtractor {
         PropertyConfigurator.configure("src/main/resources/log4j.properties");
     }
 
-    public static void main(String[] args) throws JMSException {
+    public static void main(String[] args) throws JMSException, IOException, SAXException, ParserConfigurationException {
 
-        if(args.length != 3){
-            System.out.println("Please add the <activeMQ URL> <QueueName> <user_to_follow> as a arguments");
+        if(args.length != 2 || args[0].equals("") || args[1].equals("")){
+            System.out.println("Usage ant -DjmsUrl=<JMS_URL> -DqueueName=<QUEUE_NAME>");
             System.exit(0);
         }
 
-        TweetExtractor extractor = new TweetExtractor(args[0],args[1],args[2]);
+        String userToFollow = "road_lk";
+
+        TweetExtractor extractor = new TweetExtractor(args[0],args[1],userToFollow);
         extractor.retrieveTweets();
         logger.info("Total Tweets Extracted: " + extractor.tweetList.size());
 
@@ -186,9 +186,17 @@ public class TweetExtractor {
     /***
      *  Method to set up the API keys for the configuration builder
      */
-    private void buildConfiguration(){
+    private void buildConfiguration() throws IOException, SAXException, ParserConfigurationException {
         cb = new ConfigurationBuilder();
         Logger.getLogger(TweetExtractor.class).debug("Building Configuration");
+
+        TwitterConfigurationBuiler builder = new TwitterConfigurationBuiler("twitterConfig.xml");
+        TwitterConfiguration config = builder.getSearchConfiguration();
+
+        String consumerKey = config.getConsumerKey();
+        String consumerSecret = config.getConsumerSecret();
+        String accessToken = config.getAccessToken();
+        String accessTokenSecret = config.getAccessTokenSecret();
 
         if(consumerKey == null || consumerSecret == null || accessToken == null || accessTokenSecret == null)
             throw new NullPointerException("TWitter API Keys not set");

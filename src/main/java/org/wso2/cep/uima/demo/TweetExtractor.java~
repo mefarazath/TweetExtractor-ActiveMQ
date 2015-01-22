@@ -1,0 +1,206 @@
+package org.wso2.cep.uima.demo;
+
+import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.log4j.PropertyConfigurator;
+import org.wso2.cep.uima.demo.data.Tweet;
+import twitter4j.*;
+import twitter4j.conf.ConfigurationBuilder;
+
+import javax.jms.*;
+import java.io.BufferedWriter;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Created by farazath on 12/22/14.
+ */
+public class TweetExtractor {
+
+    // Twitter API keys
+    private final String consumerKey = "IxEX6LoI3Hcp91JX6KHEVECKu";
+    private final String consumerSecret = "vr4RRmrT7UvKQO703Z3K9U5MsFzc7G8N7M8IBLzWQn3BrCQGIE";
+    private final String accessToken = "711930980-dThMw79BL0i33dOpfCZBqDYH8FWIeQYXdkKOsvfa";
+    private final String accessTokenSecret = "kgVIchdQrkjKPZoReBMECSLoyPegEHm2Y8mi8BLqDQEtP";
+
+
+    private ConfigurationBuilder cb;
+    private Twitter twitterApp;
+
+    private ArrayList<Tweet> tweetList;
+    private static Logger logger = Logger.getLogger(TweetExtractor.class);
+    private String user_to_follow;
+    private String JMSUrl;
+    private String queueName;
+
+
+    public TweetExtractor(String JMSUrl, String queueName,String user_to_follow){
+
+        this.JMSUrl = JMSUrl;
+        this.queueName = queueName;
+        this.user_to_follow = user_to_follow;
+        buildConfiguration();   // set the API keys to the Config Builder
+        TwitterFactory tf = new TwitterFactory(cb.build());
+        twitterApp = tf.getInstance();
+
+        PropertyConfigurator.configure("src/main/resources/log4j.properties");
+    }
+
+    public static void main(String[] args) throws JMSException {
+
+        if(args.length != 3){
+            System.out.println("Please add the <activeMQ URL> <QueueName> <user_to_follow> as a arguments");
+            System.exit(0);
+        }
+
+        TweetExtractor extractor = new TweetExtractor(args[0],args[1],args[2]);
+        extractor.retrieveTweets();
+        logger.info("Total Tweets Extracted: " + extractor.tweetList.size());
+
+        // create the factory for ActiveMQ connection
+        ActiveMQConnectionFactory factory = new ActiveMQConnectionFactory(extractor.JMSUrl);
+        Connection connection = factory.createConnection();
+        connection.start();
+        logger.info("ActiveMQ connection started for TweetExtractor successfully");
+
+        // Create a non-transactional session with automatic acknowledgement
+        Session session = connection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+
+        // Create a reference to the queue test_queue in this session.
+        Queue queue = session.createQueue(extractor.queueName);
+
+        // Create a producer for queue
+        MessageProducer producer = session.createProducer(queue);
+        logger.info("ActiveMQ producer successfully created for TwitterExtractor");
+
+        logger.info("ActiveMQ producer enqueuing extracted Tweets");
+
+        for(Tweet t: extractor.tweetList){
+            TextMessage tweetMessage = session.createTextMessage(t.getText());
+            producer.send(tweetMessage);
+            logger.debug(tweetMessage.getText()+" successfull sent");
+        }
+
+        logger.info("ActiveMQ Tweet Extractor enqueued "+extractor.tweetList.size()+" messages");
+        // Stop the connection — good practice but redundant here
+        producer.close();
+        logger.info("Producer Closed");
+        connection.stop();
+        logger.info("Connection Stopped");
+
+        System.exit(0);
+    }
+
+
+    /***
+     * Method to retrieve tweets from the user_to_folow user's timeline
+     * Only a maximum of ~3200 tweets can be extracted due to API limitations
+     */
+    private void retrieveTweets(){
+
+        Paging paging;
+        tweetList = new ArrayList<Tweet>();
+
+        // set the lowest value of the tweet ID initially to one less than Long.MAX_VALUE
+        long min_id = Long.MAX_VALUE - 1;
+        int count;
+        int index = 0;
+
+        logger.info("Started Extracting Tweets of "+user_to_follow);
+        // iterate through the timeline untill the iteration returns no tweets
+        while (true) {
+            try {
+
+                count = tweetList.size();
+
+                // paging tweets at a rate of 100 per page
+                paging = new Paging(1, 100);
+
+                // if this is not the first iteration set the new min_id value for the page
+                if (count != 0)
+                    logger.info("Extracted Tweet Count : "+count);
+                    paging.setMaxId(min_id - 1);
+
+                // get a page of the tweet timeline with tweets with ids less than the min_id value
+                List<Status> results = twitterApp.getUserTimeline(user_to_follow, paging);
+
+                // iterate the results and add to tweetList
+                for (Status s : results) {
+                    Tweet tweet = new Tweet(s.getId(),s.getCreatedAt(),s.getText());
+                    tweetList.add(tweet);
+                    Logger.getLogger(TweetExtractor.class).debug(" " + (index++) + " " + tweet.toString());
+
+                    // set the value for the min value for the next iteration
+                    if (s.getId() < min_id) {
+                        min_id = s.getId();
+                    }
+                }
+
+                // if the results for this iteration is zero, means we have reached the API limit or we have extracted the maximum
+                // possible, so break
+                if (results.size() == 0) {
+                    break;
+                }
+
+            } catch (TwitterException e) {
+                e.printStackTrace();
+                break;
+            } catch (Exception e) {
+                e.printStackTrace();
+                break;
+            }
+        }
+
+    }
+
+
+    /**
+     * Method to write extracted tweets as a JSON Array to a file
+     *
+     * @param statusesArray Json Array of tweets
+     * @param fileName      Name of the file to save the tweets(should end with .json)
+     */
+    private static void writeToFile(JSONArray statusesArray, String fileName) {
+        BufferedWriter writer;
+        try {
+            writer = new BufferedWriter(new FileWriter(fileName));
+            writer.write(statusesArray.toString(5));
+            writer.close();
+        } catch (IOException e) {
+            Logger.getLogger(TweetExtractor.class).error("Error Writing to file: " + e.getMessage());
+        } catch (JSONException e) {
+            Logger.getLogger(TweetExtractor.class).error("Error while converting json array to string: " + e.getMessage());
+        }
+
+    }
+
+    private static void writeTextFile(BufferedWriter writer, String data){
+
+        try {
+            writer.append(data+"\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    /***
+     *  Method to set up the API keys for the configuration builder
+     */
+    private void buildConfiguration(){
+        cb = new ConfigurationBuilder();
+        Logger.getLogger(TweetExtractor.class).debug("Building Configuration");
+
+        if(consumerKey == null || consumerSecret == null || accessToken == null || accessTokenSecret == null)
+            throw new NullPointerException("TWitter API Keys not set");
+
+        cb.setDebugEnabled(true)
+                .setOAuthConsumerKey(consumerKey)
+                .setOAuthConsumerSecret(consumerSecret)
+                .setOAuthAccessToken(accessToken)
+                .setOAuthAccessTokenSecret(accessTokenSecret);
+    }
+
+
+
+}
