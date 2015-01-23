@@ -11,8 +11,6 @@ import twitter4j.conf.ConfigurationBuilder;
 
 import javax.jms.*;
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.BufferedWriter;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -25,18 +23,18 @@ public class TweetExtractor {
     private ConfigurationBuilder cb;
     private Twitter twitterApp;
 
-    private ArrayList<Tweet> tweetList;
+    private ArrayList<Tweet> tweetList = new ArrayList<>();
     private static Logger logger = Logger.getLogger(TweetExtractor.class);
-    private String user_to_follow;
+    private String userToSearch;
     private String JMSUrl;
     private String queueName;
 
 
-    public TweetExtractor(String JMSUrl, String queueName,String user_to_follow) throws ParserConfigurationException, SAXException, IOException {
+    public TweetExtractor(String JMSUrl, String queueName) throws ParserConfigurationException, SAXException, IOException {
 
         this.JMSUrl = JMSUrl;
         this.queueName = queueName;
-        this.user_to_follow = user_to_follow;
+
         buildConfiguration();   // set the API keys to the Config Builder
         TwitterFactory tf = new TwitterFactory(cb.build());
         twitterApp = tf.getInstance();
@@ -51,9 +49,8 @@ public class TweetExtractor {
             System.exit(0);
         }
 
-        String userToFollow = "road_lk";
 
-        TweetExtractor extractor = new TweetExtractor(args[0],args[1],userToFollow);
+        TweetExtractor extractor = new TweetExtractor(args[0],args[1]);
         extractor.retrieveTweets();
         logger.info("Total Tweets Extracted: " + extractor.tweetList.size());
 
@@ -78,7 +75,7 @@ public class TweetExtractor {
         for(Tweet t: extractor.tweetList){
             TextMessage tweetMessage = session.createTextMessage(t.getText());
             producer.send(tweetMessage);
-            logger.debug(tweetMessage.getText()+" successfull sent");
+            logger.debug(tweetMessage.getText()+" successfully sent");
         }
 
         logger.info("ActiveMQ Tweet Extractor enqueued "+extractor.tweetList.size()+" messages");
@@ -93,20 +90,19 @@ public class TweetExtractor {
 
 
     /***
-     * Method to retrieve tweets from the user_to_folow user's timeline
+     * Method to retrieve tweets from the userToSearch user's timeline
      * Only a maximum of ~3200 tweets can be extracted due to API limitations
      */
     private void retrieveTweets(){
 
         Paging paging;
-        tweetList = new ArrayList<Tweet>();
 
         // set the lowest value of the tweet ID initially to one less than Long.MAX_VALUE
         long min_id = Long.MAX_VALUE - 1;
         int count;
         int index = 0;
 
-        logger.info("Started Extracting Tweets of "+user_to_follow);
+        logger.info("Started Extracting Tweets of "+ userToSearch);
         // iterate through the timeline untill the iteration returns no tweets
         while (true) {
             try {
@@ -122,7 +118,7 @@ public class TweetExtractor {
                     paging.setMaxId(min_id - 1);
 
                 // get a page of the tweet timeline with tweets with ids less than the min_id value
-                List<Status> results = twitterApp.getUserTimeline(user_to_follow, paging);
+                List<Status> results = twitterApp.getUserTimeline(userToSearch, paging);
 
                 // iterate the results and add to tweetList
                 for (Status s : results) {
@@ -154,35 +150,6 @@ public class TweetExtractor {
     }
 
 
-    /**
-     * Method to write extracted tweets as a JSON Array to a file
-     *
-     * @param statusesArray Json Array of tweets
-     * @param fileName      Name of the file to save the tweets(should end with .json)
-     */
-    private static void writeToFile(JSONArray statusesArray, String fileName) {
-        BufferedWriter writer;
-        try {
-            writer = new BufferedWriter(new FileWriter(fileName));
-            writer.write(statusesArray.toString(5));
-            writer.close();
-        } catch (IOException e) {
-            Logger.getLogger(TweetExtractor.class).error("Error Writing to file: " + e.getMessage());
-        } catch (JSONException e) {
-            Logger.getLogger(TweetExtractor.class).error("Error while converting json array to string: " + e.getMessage());
-        }
-
-    }
-
-    private static void writeTextFile(BufferedWriter writer, String data){
-
-        try {
-            writer.append(data+"\n");
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
     /***
      *  Method to set up the API keys for the configuration builder
      */
@@ -190,16 +157,18 @@ public class TweetExtractor {
         cb = new ConfigurationBuilder();
         Logger.getLogger(TweetExtractor.class).debug("Building Configuration");
 
-        TwitterConfigurationBuiler builder = new TwitterConfigurationBuiler("twitterConfig.xml");
-        TwitterConfiguration config = builder.getSearchConfiguration();
+        TwitterConfiguration config = TwitterConfigurationBuiler.getTwitterConfiguration();
 
         String consumerKey = config.getConsumerKey();
         String consumerSecret = config.getConsumerSecret();
         String accessToken = config.getAccessToken();
         String accessTokenSecret = config.getAccessTokenSecret();
+        userToSearch = config.getUserToSearch();
 
-        if(consumerKey == null || consumerSecret == null || accessToken == null || accessTokenSecret == null)
+        if(consumerKey == null || consumerSecret == null || accessToken == null || accessTokenSecret == null) {
+            logger.error("Twitter API Keys have not been set properly in twitterConfig.xml");
             throw new NullPointerException("TWitter API Keys not set");
+        }
 
         cb.setDebugEnabled(true)
                 .setOAuthConsumerKey(consumerKey)
