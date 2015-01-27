@@ -2,29 +2,35 @@
 
 <TwitterConfiguration>
 
-	<!-- API Keys for your twitter App -->
+	<!--
+		API Keys for your twitter App
+		Replace with valid API keys to run the client
+	-->
 	<TwitterAPIKeys>
-		<consumerKey>IxEX6LoI3Hcp91JX6KHEVECKu</consumerKey>
-		<consumerSecret>vr4RRmrT7UvKQO703Z3K9U5MsFzc7G8N7M8IBLzWQn3BrCQGIE</consumerSecret>
-		<accessToken>711930980-dThMw79BL0i33dOpfCZBqDYH8FWIeQYXdkKOsvfa</accessToken>
-		<accessTokenSecret>kgVIchdQrkjKPZoReBMECSLoyPegEHm2Y8mi8BLqDQEtP</accessTokenSecret>	
+		<consumerKey>*******************</consumerKey>
+		<consumerSecret>*****************</consumerSecret>
+		<accessToken>**************************</accessToken>
+		<accessTokenSecret>**********************</accessTokenSecret>
 	</TwitterAPIKeys>
-	
-	<!-- 
-		Username or Twitter Handle of the user you want to extract tweets from
-		Applicable only if you are running the client in Search mode
+
+	<!--
+		Search configuration params are in effect if you are running the client in extraction mode
 	-->
 	<SearchConfiguration>
+		<!-- Username/Tweet handle of the user to search-->
 		<userToSearch>road_lk</userToSearch>
+		<!-- Maximum Number of Tweets to extract from the timeline-->
+		<maxTweetCount>250</maxTweetCount>
 	</SearchConfiguration>
 
- 
-	<!-- 
-		UserIDs of the users you want to filter the twitterStream for
-		Applicable only if you are running the client in the Streaming mode
+
+	<!--
+		Search configuration params are in effect if you are running the client in extraction mode
 	-->
 	<StreamingConfiguration>
-		<followers>711930980,808888003,4366881,2984541727</followers>
+		<!-- TwitterIDs of the users to filter the stream for-->
+		<!-- road_lk = 808888003 -->
+		<followers>808888003</followers>
 	</StreamingConfiguration>
-	
+
 </TwitterConfiguration>
